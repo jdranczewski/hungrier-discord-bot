@@ -15,7 +15,7 @@ class UI(discord.ui.View):
 class Buttons(commands.Cog):
     @app_commands.command(name="buttons", description="Show some buttons")
     async def ping(self, interaction: discord.Interaction):
-        await interaction.response.send_message(view=UI())
+        await interaction.response.send_message(view=UI(timeout=None))
 
 async def setup(bot):
     await bot.add_cog(Buttons(bot))
