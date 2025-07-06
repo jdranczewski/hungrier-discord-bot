@@ -1,7 +1,8 @@
 import discord
 import discord.ui
 from discord import app_commands
-from discord.ext import commands
+
+from . import base_cog
 
 class UI(discord.ui.View):
     @discord.ui.button(label="Button 1")
@@ -12,7 +13,7 @@ class UI(discord.ui.View):
     async def button_2(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content="Sad times")
 
-class Buttons(commands.Cog):
+class Buttons(base_cog.Cog):
     @app_commands.command(name="buttons", description="Show some buttons")
     async def ping(self, interaction: discord.Interaction):
         await interaction.response.send_message(view=UI(timeout=None))
