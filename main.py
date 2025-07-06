@@ -9,6 +9,7 @@ class Hungrier(commands.Bot):
     async def setup_hook(self) -> None:
         await self.load_extension("extensions.ping")
         await self.load_extension("extensions.buttons")
+        await self.load_extension("extensions.voice_notifier")
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
