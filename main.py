@@ -12,12 +12,6 @@ class Hungrier(commands.Bot):
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
-        # Sync command tree to the testing guild
-        # if config.testing_guild:
-        #     guild = discord.Object(config.testing_guild)
-        #     self.tree.copy_global_to(guild=guild)
-        #     await self.tree.sync(guild=guild)
-
 
 def main():
     # Establish intents
@@ -34,6 +28,14 @@ def main():
     @bot.command(name="sync")
     async def sync(ctx: commands.Context):
         synced = await bot.tree.sync()
+        await ctx.send(
+            f"Synced {len(synced)} commands."
+        )
+
+    @bot.command(name="sync_here")
+    async def sync(ctx: commands.Context):
+        bot.tree.copy_global_to(guild=ctx.guild)
+        synced = await bot.tree.sync(guild=ctx.guild)
         await ctx.send(
             f"Synced {len(synced)} commands."
         )
