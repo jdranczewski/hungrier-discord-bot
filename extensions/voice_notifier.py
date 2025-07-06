@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS "voice_channels" (
 	"guild"	  INTEGER NOT NULL,
 	"voice"	  INTEGER NOT NULL,
 	"text"	  INTEGER NOT NULL,
-    "message" INTEGER NOT NULL,
+    "message" INTEGER,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
 """
