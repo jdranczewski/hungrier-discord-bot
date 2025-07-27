@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -96,12 +97,23 @@ CREATE TABLE IF NOT EXISTS "voice_members" (
             for row in cursor:
                 # Fetch the text channel based on its ID and send a message
                 text_channel = await self.bot.fetch_channel(row["text"])
-                message = await text_channel.send(f"{member.display_name} joined {channel.mention}!")
+                len_others = len(channel.members) - 1
+                others = "" if len_others < 1 else f" with {len(channel.members)-1} other"
+                if len_others > 2:
+                    others += "s"
+                message = await text_channel.send(f"{member.display_name} joined {channel.mention}{others}!")
                 self.bot.dbconn.execute(
                     "INSERT INTO voice_members (member, channel, message) VALUES (?, ?, ?)",
                     (member.id, row["id"], message.id)
                 )
                 self.bot.dbconn.commit()
+                await asyncio.sleep(5)
+                try:
+                    await message.edit(content=f"{member.display_name} joined {channel.mention}!")
+                except discord.errors.NotFound:
+                    # The message was deleted
+                    pass
+
         elif before.channel is not None and after.channel is None:
             channel = before.channel
             cursor = self.bot.dbconn.execute(
