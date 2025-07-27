@@ -1,7 +1,11 @@
 from discord.ext import commands
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .. import main
+
 class Cog(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: "main.Hungrier"):
         self.bot = bot
 
     db_structure = None

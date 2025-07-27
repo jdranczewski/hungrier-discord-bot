@@ -13,6 +13,15 @@ class Hungrier(commands.Bot):
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
+    def set_dbconn(self, dbconn: sqlite3.Connection) -> None:
+        self._dbconn = dbconn
+
+    @property
+    def dbconn(self) -> sqlite3.Connection:
+        if not hasattr(self, "_dbconn"):
+            raise Exception("Database connection not provided")
+        return self._dbconn
+
 
 def main():
     # Establish intents
@@ -44,7 +53,7 @@ def main():
     # Run the bot
     with sqlite3.connect("main.db") as dbconn:
         dbconn.row_factory = sqlite3.Row
-        bot.dbconn = dbconn
+        bot.set_dbconn(dbconn)
         bot.run(config.token)
 
 if __name__ == "__main__":

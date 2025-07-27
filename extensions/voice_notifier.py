@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS "voice_channels" (
 	"guild"	  INTEGER NOT NULL,
 	"voice"	  INTEGER NOT NULL,
 	"text"	  INTEGER NOT NULL,
-    "message" INTEGER,
+    "overview_message" INTEGER,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
 """
@@ -63,6 +63,17 @@ CREATE TABLE IF NOT EXISTS "voice_channels" (
 
 
 class Notify(base_cog.Cog):
+    db_structure = """
+CREATE TABLE IF NOT EXISTS "voice_members" (
+	"id"	INTEGER NOT NULL UNIQUE,
+	"member"	INTEGER NOT NULL,
+	"channel"	INTEGER NOT NULL,
+	"message"	INTEGER,
+	PRIMARY KEY("id" AUTOINCREMENT),
+	FOREIGN KEY("channel") REFERENCES "voice_channels"("id")
+);
+"""
+
     @commands.Cog.listener()
     async def on_voice_state_update(
         self,
@@ -71,6 +82,10 @@ class Notify(base_cog.Cog):
         after: discord.VoiceState
     ):
         # Handle VC join events (not in VC before, in a VC after)
+        # Joins are only handled if we catch them live (no point sending a 
+        # notification otherwise), but leaves should probably be made consistent
+        # every time we get an event here, to avoid a situation where there are
+        # entries in the database for people who have since left.
         if before.channel is None and after.channel is not None:
             channel = after.channel
             # Get all the text channels that we should send notifications to
@@ -81,8 +96,30 @@ class Notify(base_cog.Cog):
             for row in cursor:
                 # Fetch the text channel based on its ID and send a message
                 text_channel = await self.bot.fetch_channel(row["text"])
-                await text_channel.send(f"{member.display_name} joined {channel.mention}!")
-
+                message = await text_channel.send(f"{member.display_name} joined {channel.mention}!")
+                self.bot.dbconn.execute(
+                    "INSERT INTO voice_members (member, channel, message) VALUES (?, ?, ?)",
+                    (member.id, row["id"], message.id)
+                )
+                self.bot.dbconn.commit()
+        elif before.channel is not None and after.channel is None:
+            channel = before.channel
+            cursor = self.bot.dbconn.execute(
+                "SELECT voice_members.id, voice_channels.text, voice_members.message FROM voice_members "
+                "LEFT JOIN voice_channels on voice_members.channel=voice_channels.id "
+                "WHERE member=? AND voice=?",
+                (member.id, channel.id)
+            )
+            for row in cursor:
+                self.bot.dbconn.execute(
+                    "DELETE FROM voice_members WHERE id=?",
+                    (row["id"],)
+                )
+                self.bot.dbconn.commit()
+                if row["message"]:
+                    text_channel = await self.bot.fetch_channel(row["text"])
+                    message = await text_channel.fetch_message(row["message"])
+                    await message.delete()
 
 async def setup(bot):
     await bot.add_cog(EnableDisable(bot))
