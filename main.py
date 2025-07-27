@@ -7,6 +7,7 @@ import config
 
 class Hungrier(commands.Bot):
     async def setup_hook(self) -> None:
+        await self.load_extension("extensions.delete")
         await self.load_extension("extensions.ping")
         await self.load_extension("extensions.buttons")
         await self.load_extension("extensions.voice_notifier")
