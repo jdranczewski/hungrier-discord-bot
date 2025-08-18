@@ -116,18 +116,17 @@ class Purge:
                 (f"Reached {message.created_at.strftime('%d/%m/%Y, %H:%M:%S')} (starting from oldest).\n" if message else "") +
                 f"Stop date at {self.before.strftime('%d/%m/%Y, %H:%M:%S')}.",
             )
-            if message:
-                output_file.seek(0)
-                await self.user.dm_channel.send(
-                    file=discord.File(output_file, filename="archive.txt")
-                )
-            output_file.close()
             await cancel_message.delete()
         except Exception as e:
             await self.user.dm_channel.send(f"Exception occured: `{e}` - contact Jakub.")
             raise e
         finally:
             _purges.remove(self)
+            output_file.seek(0)
+            await self.user.dm_channel.send(
+                file=discord.File(output_file, filename="archive.txt")
+            )
+            output_file.close()
     
     def stop(self):
         self.stop_flag = True
