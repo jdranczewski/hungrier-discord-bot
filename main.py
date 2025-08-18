@@ -11,6 +11,7 @@ class Hungrier(commands.Bot):
         await self.load_extension("extensions.ping")
         await self.load_extension("extensions.buttons")
         await self.load_extension("extensions.voice_notifier")
+        await self.load_extension("extensions.purge")
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
@@ -27,7 +28,7 @@ class Hungrier(commands.Bot):
 def main():
     # Establish intents
     intents = discord.Intents.default()
-    # intents.message_content = True
+    intents.message_content = True
 
     # Create the bot
     bot = Hungrier(
