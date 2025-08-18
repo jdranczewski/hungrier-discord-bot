@@ -71,7 +71,7 @@ class Purge:
             await self.user.create_dm()
         cancel_message = await self.user.dm_channel.send(
             f"{'Purge in' if self.delete else 'Archive of'} {self.channel.mention} initiated.\nYou have 30 seconds to cancel, "
-            "and will be able to cancel at any point during the process too.",
+            "and will be able to interrupt the process at any point too.",
             view=CancelUI(timeout=None)
         )
         await asyncio.sleep(30)
