@@ -12,6 +12,7 @@ class Hungrier(commands.Bot):
         await self.load_extension("extensions.buttons")
         await self.load_extension("extensions.voice_notifier")
         await self.load_extension("extensions.purge")
+        await self.load_extension("extensions.count_threads")
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
