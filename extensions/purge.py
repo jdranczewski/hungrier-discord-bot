@@ -20,6 +20,12 @@ class PurgeCog(base_cog.Cog):
         day: int,
         delete: bool
     ):
+        if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
+            await interaction.response.send_message(
+                "Unsupported channel type!",
+                ephemeral=True
+            )
+            return
         await interaction.response.send_message(
             f"Please confirm that you would like to **{'delete' if delete else 'archive'}** "
             f"your ({interaction.user.mention}) messages in "
@@ -36,6 +42,11 @@ class PurgeUI(discord.ui.View):
 
     @discord.ui.button(label="Confirm the purge", style=discord.ButtonStyle.danger)
     async def button_1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
+            await interaction.response.edit_message(
+                "Unsupported channel type!",
+            )
+            return
         await interaction.response.edit_message(
             content="Purge confirmed. You will receive progress notifications via DM.",
             view=CancelUI(timeout=None)
@@ -67,8 +78,9 @@ class Purge:
         self.stop_flag = False
 
     async def run(self):
-        if not self.user.dm_channel:
+        if self.user.dm_channel is None:
             await self.user.create_dm()
+        assert self.user.dm_channel is not None
         cancel_message = await self.user.dm_channel.send(
             f"{'Purge in' if self.delete else 'Archive of'} {self.channel.mention} initiated.\nYou have 30 seconds to cancel, "
             "and will be able to interrupt the process at any point too.",
@@ -108,7 +120,7 @@ class Purge:
                             f"Reached {message.created_at.strftime('%d/%m/%Y, %H:%M:%S')} (starting from oldest).\n"
                             f"Stopping at {self.before.strftime('%d/%m/%Y, %H:%M:%S')}."
                         )
-            if unarchived:
+            if isinstance(self.channel, discord.Thread) and unarchived:
                 await self.channel.edit(archived=True)
             await status_message.edit(
                 content=f"# {'Purge' if self.delete else 'Archive'} {'cancelled' if self.stop_flag else 'completed'}.\n"
@@ -124,7 +136,7 @@ class Purge:
             _purges.remove(self)
             output_file.seek(0)
             await self.user.dm_channel.send(
-                file=discord.File(output_file, filename="archive.txt")
+                file=discord.File(output_file, filename="archive.txt")  # ty:ignore[invalid-argument-type]
             )
             output_file.close()
     

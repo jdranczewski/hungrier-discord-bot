@@ -10,6 +10,11 @@ class CountThreads(base_cog.Cog):
     async def ping(self, interaction: discord.Interaction):
         response = await interaction.response.send_message("Scanning...")
         total_threads = 0
+        if interaction.guild is None:
+            await interaction.edit_original_response(
+                content="This command only works inside servers!"
+            )
+            return
         total_channels = len(interaction.guild.channels)
         output_file = tempfile.SpooledTemporaryFile(mode="w+b")
         def print_file(text):
