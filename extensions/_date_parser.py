@@ -70,11 +70,19 @@ def _regex_search(string) -> tuple[int | None, int, int, str] | None:
         day, month = (int(match.group(i)) for i in range(1, 3))
         return None, month, day, string.replace(match.group(0), "DATEFOUND")
 
-def _parse_part(part) -> list[None | Date | Ranger| Month| Day]:
+def _parse_part(part):
     if "/" in part:
         match = _regex_search(part)
         if match is None:
-            return [None]
+            subparts = part.split("/")
+            if len(subparts) > 1:
+                return [
+                    y
+                    for x in subparts
+                    for y in _parse_part(x)
+                ]
+            else:
+                return [None]
         year, month, day, _ = match
         return [Date(year, month, day)]
     if part == "-":
