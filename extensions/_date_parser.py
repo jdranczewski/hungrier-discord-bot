@@ -1,3 +1,4 @@
+import dateutil
 import datetime
 import re
 from dataclasses import dataclass
@@ -26,10 +27,21 @@ class Date:
             raise Exception("No year set")
         return datetime.date(self.year, self.month, self.day)
 
+_uk_tz = dateutil.tz.tzstr("Europe/London")
+
 @dataclass
-class Range:
-    start: Date
-    end: Date
+class Time:
+    hour: int
+    minute: int
+
+    @property
+    def time(self) -> datetime.time:
+        return datetime.time(self.hour, self.minute, tzinfo=_uk_tz)
+
+@dataclass
+class TimeRange:
+    start: Time
+    end: Time
 
 class Ranger:
     def __repr__(self):
@@ -39,6 +51,17 @@ months = ["january", "february", "march", "april", "may", "june", "july", "augus
 sub_months = [x[:3] for x in months]
 separators = ".,()[]" # handling - and / separately
 number_ends = ["th", "st", "nd", "rd"]
+
+_time_regex = re.compile("((?:[0-9])?[0-9])[:.]([0-9]{2})([ap]m)?")
+def parse_time(string) -> Time | None:
+    if (match := _time_regex.match(string)):
+        hour, minute = (int(match.group(i)) for i in range(1, 3))
+        ampm = match.group(3)
+        if ampm == "pm" and hour != 12:
+            hour += 12
+        elif ampm == "am" and hour == 12:
+            hour -= 12
+        return Time(hour, minute)
 
 def parse_month(string) -> Month | None:
     if string in months:
@@ -56,13 +79,13 @@ def parse_day(string) -> Day | None:
         return None
 
 def _regex_search(string) -> tuple[int | None, int, int, str] | None:
-    if (match := re.search(r"([0-9]{4})\/([0-9]{2})\/([0-9]{2})", string)) is not None:
+    if (match := re.search(r"([0-9]{4})[\/.]([0-9]{2})[\/.]([0-9]{2})", string)) is not None:
         year, month, day = (int(match.group(i)) for i in range(1, 4))
         return year, month, day, string.replace(match.group(0), "DATEFOUND")
-    if (match := re.search(r"([0-9]{2})\/([0-9]{2})\/([0-9]{4})", string)) is not None:
+    if (match := re.search(r"([0-9]{2})[\/.]([0-9]{2})[\/.]([0-9]{4})", string)) is not None:
         day, month, year = (int(match.group(i)) for i in range(1, 4))
         return year, month, day, string.replace(match.group(0), "DATEFOUND")
-    if (match := re.search(r"([0-9]{2})\/([0-9]{2})\/([0-9]{2})", string)) is not None:
+    if (match := re.search(r"([0-9]{2})[\/.]([0-9]{2})[\/.]([0-9]{2})", string)) is not None:
         day, month, year = (int(match.group(i)) for i in range(1, 4))
         year += 2000
         return year, month, day, string.replace(match.group(0), "DATEFOUND")
@@ -87,6 +110,8 @@ def _parse_part(part):
         return [Date(year, month, day)]
     if part == "-":
         return [Ranger()]
+    if (time := parse_time(part)) is not None:
+        return [time]
     if (month := parse_month(part)) is not None:
         return [month]
     if (day := parse_day(part)) is not None:
@@ -99,6 +124,13 @@ def _set_years(parts, past_reference):
             part.year = past_reference.year
             if part.date < past_reference:
                 part.year += 1
+
+def _set_dangling_times(parsed_parts):
+    for i, part in enumerate(parsed_parts):
+        if isinstance(part, Time):
+            hour_b = (part.hour + 2) % 24
+            time_b = Time(hour_b, part.minute)
+            parsed_parts[i] = TimeRange(part, time_b)
 
 def _handle_rangers(parsed_parts):
     i = 1
@@ -121,16 +153,28 @@ def _handle_rangers(parsed_parts):
                 new_day = a.date + datetime.timedelta(days=j+1)
                 parsed_parts.insert(i, Date(new_day.year, new_day.month, new_day.day))
                 i += 1
+        elif isinstance(a, Time) and isinstance(b, Time):
+            if b.time < a.time:
+                b = Time(23, 59)
+            timerange = TimeRange(a, b)
+            del parsed_parts[i-1:i+2]
+            parsed_parts.insert(i-1, timerange)
+            i -= 1
         i += 1
-    if sum(isinstance(x, Day) for x in parsed_parts) > 20:
+    if (N_days := sum(isinstance(x, (Day, Date)) for x in parsed_parts)) > 20:
         # oops, something got messed up somewhere and a lot of days were added, abort
-        parsed_parts = []
+        raise Exception(f"Significantly too many days! ({N_days})")
 
-def parse_dates(string, past_reference) -> list[Date]:
-    print(string)
+def parse_dates(string, past_reference) -> tuple[list[Date], None | TimeRange]:
     # Normalising to a standard format
     # Time should always use ":"
     string = re.sub(R"[0-9]\.[0-9][0-9]", lambda x: x.group(0).replace(".", ":"), string)
+    # am or pm shouldn't be separated by a space from the preceding number
+    string = re.sub(
+        "[0-9]( [ap]m)",
+        lambda x: x.group(0).replace(x.group(1), x.group(1).replace(" ", "")),
+        string
+    )
     # Date ranges should have spaces:
     string = string.replace("-", " - ")
     # Everything lowercase
@@ -143,14 +187,12 @@ def parse_dates(string, past_reference) -> list[Date]:
     # Remove empty parts
     parts = [x for x in parts if len(x)]
     parsed_parts = []
-    # print(parts)
     
     # Parse parts into objects
     for part in parts:
         parsed_parts.extend(_parse_part(part))
     # Set years on any Date objects parsed so far
     _set_years(parsed_parts, past_reference)
-    # print(parsed_parts)
 
     # Deal with Rangers
     _handle_rangers(parsed_parts)
@@ -180,7 +222,10 @@ def parse_dates(string, past_reference) -> list[Date]:
     parsed_parts = [x for x in parsed_parts if not isinstance(x, Month)]
     _set_years(parsed_parts, past_reference)
     _handle_rangers(parsed_parts)
-    for part in parsed_parts:
-        if isinstance(part, Date):
-            print("  ", part)
-    return [x for x in parsed_parts if isinstance(x, Date)]
+    _set_dangling_times(parsed_parts)
+    # for part in parsed_parts:
+    #     if isinstance(part, Date):
+    #         print("  ", part)
+    time_list: list[TimeRange] = [x for x in parsed_parts if isinstance(x, TimeRange)]
+    time = time_list[0] if len(time_list) == 1 else None
+    return [x for x in parsed_parts if isinstance(x, Date)], time

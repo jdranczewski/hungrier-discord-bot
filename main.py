@@ -4,6 +4,7 @@ from discord import app_commands
 import sqlite3
 
 import config
+import logging
 
 class Hungrier(commands.Bot):
     async def setup_hook(self) -> None:
@@ -28,6 +29,10 @@ class Hungrier(commands.Bot):
             raise Exception("Database connection not provided")
         return self._dbconn
 
+    @property
+    def logger(self) -> logging.Logger:
+        return logging.getLogger("discord.bot_log")
+
 
 def main():
     # Establish intents
@@ -50,11 +55,12 @@ def main():
 
     @bot.command(name="sync_here")
     async def sync(ctx: commands.Context):
-        bot.tree.copy_global_to(guild=ctx.guild)
-        synced = await bot.tree.sync(guild=ctx.guild)
-        await ctx.send(
-            f"Synced {len(synced)} commands."
-        )
+        if ctx.guild is not None:
+            bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(
+                f"Synced {len(synced)} commands."
+            )
 
     # Run the bot
     with sqlite3.connect("main.db") as dbconn:

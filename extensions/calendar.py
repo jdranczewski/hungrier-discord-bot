@@ -1,16 +1,15 @@
-import calendar
-from tracemalloc import start
 import asyncio
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
+import config
 
 from . import base_cog
 from extensions import _date_parser
 
-import uuid
-import icalendar
 import datetime
+import icalendar
+import uuid
 
 class EnableDisableCalendar(base_cog.Cog):
     db_structure = """
@@ -39,13 +38,13 @@ CREATE TABLE IF NOT EXISTS "forum_channels" (
             return
         # Check if a row matching all three already exists
         cursor = self.bot.dbconn.execute(
-            "SELECT id FROM forum_channels WHERE guild=? AND forum=?",
+            "SELECT id, hash FROM forum_channels WHERE guild=? AND forum=?",
             (interaction.guild_id, channel.id)
         )
-        if cursor.fetchone():
+        if (row := cursor.fetchone()):
             await interaction.response.send_message(
-                f"Calendar already enabled for {channel.mention}.",
-                ephemeral=True
+                f"Calendar already enabled for {channel.mention}.\nAdd this URL to your calendar app (like Google Calendar): "
+                f"https://jdranczewski.dev/hungrier/{row['hash']}.ics"
             )
         else:
             hash = str(uuid.uuid1())
@@ -54,7 +53,10 @@ CREATE TABLE IF NOT EXISTS "forum_channels" (
                 (interaction.guild_id, channel.id, hash)
             )
             self.bot.dbconn.commit()
-            await interaction.response.send_message(f"Calendar enabled for {channel.mention}.")
+            await interaction.response.send_message(
+                f"Calendar enabled for {channel.mention}.\nAdd this URL to your calendar app (like Google Calendar): "
+                f"https://jdranczewski.dev/hungrier/{hash}.ics"
+            )
     
     @app_commands.command(
         name="disable_calendar",
@@ -77,6 +79,13 @@ CREATE TABLE IF NOT EXISTS "forum_channels" (
 
 
 class CalendarParse(base_cog.Cog):
+    def __init__(self, bot):
+        super().__init__(bot)
+        self.parse_calendars.start()
+
+    def cog_unload(self):
+        self.parse_calendars.cancel()
+    
     @app_commands.command(
         name="sync_calendar",
         description="Sync calendars in this server."
@@ -97,7 +106,37 @@ class CalendarParse(base_cog.Cog):
             content="Calendar updates done!"
         )
 
+    @app_commands.command(
+        name="check_date",
+        description="Check that the dates in the thread name are parsed correctly."
+    )
+    async def check_date_command(
+        self,
+        interaction: discord.Interaction,
+    ):
+        thread = interaction.channel
+        if not isinstance(thread, discord.Thread):
+            await interaction.response.send_message(
+                f"This command only works in Forum Channels.",
+                ephemeral=True
+            )
+            return
+        past_reference = thread.created_at
+        if past_reference is None:
+            start_message = await thread.fetch_message(thread.id)
+            past_reference = start_message.created_at
+        dates, time = _date_parser.parse_dates(thread.name, past_reference.date())
+        if len(dates):
+            text = f"The following dates were detected in `{thread.name}:`"
+            for date in dates:
+                text += f"\n* {date.year}/{date.month}/{date.day}"
+                await interaction.response.send_message(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(f"No dates detected in `{thread.name}:`", ephemeral=True)
+
+    @tasks.loop(hours=3)
     async def parse_calendars(self, guild_id: None | int = None):
+        self.bot.logger.info(f"Parsing calendar events (for guild {guild_id})")
         if guild_id is not None:
             cursor = self.bot.dbconn.execute(
                 "SELECT * FROM forum_channels WHERE guild=?",
@@ -112,27 +151,53 @@ class CalendarParse(base_cog.Cog):
             if not isinstance(forum, discord.ForumChannel):
                 raise Exception("Not a ForumChannel")
             guild = await self.bot.fetch_guild(row["guild"])
-            calendar = icalendar.Calendar.new(name=guild.name)
+            calendar: icalendar.Calendar = icalendar.Calendar.new(name=guild.name)
             threads = list(forum.threads)
             async for thread in forum.archived_threads():
-                print("archived", thread)
                 threads.append(thread)
             for thread in threads:
+                name = thread.name
+                if name[0] == "[":
+                    name = name[1:].split("] ")
+                    name = f"{name[1]} [{name[0]}]"
                 past_reference = thread.created_at
                 if past_reference is None:
                     start_message = await thread.fetch_message(thread.id)
                     past_reference = start_message.created_at
-                for date in _date_parser.parse_dates(thread.name, past_reference.date()):
-                    event = icalendar.Event.new(
-                        summary=thread.name,
-                        start=date.date,
-                        end=date.date,
-                        links=thread.jump_url,
-                        uid=str(thread.id)
+                try:
+                    dates, time = _date_parser.parse_dates(
+                        thread.name,
+                        past_reference.date()
                     )
-                    calendar.add_component(event)
+                    for date in dates:
+                        if time is None:
+                            event: icalendar.Event = icalendar.Event.new(
+                                summary=name,
+                                start=date.date,
+                                end=date.date,
+                                description=thread.jump_url,
+                            )
+                        else:
+                            event: icalendar.Event = icalendar.Event.new(
+                                summary=name,
+                                start=datetime.datetime.combine(date.date, time.start.time),
+                                end=datetime.datetime.combine(date.date, time.end.time),
+                                description=thread.jump_url,
+                            )
+                        calendar.add_component(event)
+                except Exception as e:
+                    self.bot.logger.exception(f"error while parsing '{thread.name}' for dates", exc_info=e)
+                    admin = await self.bot.fetch_user(config.admin_id)
+                    if admin.dm_channel is None:
+                        await admin.create_dm()
+                    assert admin.dm_channel is not None
+                    await admin.dm_channel.send(content=f"error while parsing `{thread.name}` for dates: {e}")
             with open(f"/var/www/hosting/hungrier/{row['hash']}.ics", "w") as f:
                 f.write(calendar.to_ical().decode("utf-8"))
+
+    @parse_calendars.before_loop
+    async def before_printer(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot):
