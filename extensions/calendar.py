@@ -130,9 +130,14 @@ class CalendarParse(base_cog.Cog):
             text = f"The following dates were detected in `{thread.name}:`"
             for date in dates:
                 text += f"\n* {date.year}/{date.month}/{date.day}"
-                await interaction.response.send_message(text, ephemeral=True)
+            if time is not None:
+                text += (
+                    f"\nA time was detected for the event: "
+                    f"{time.start.hour:02d}:{time.start.minute:02d} - {time.end.hour:02d}:{time.end.minute:02d}"
+                )
+            await interaction.response.send_message(text, ephemeral=True)
         else:
-            await interaction.response.send_message(f"No dates detected in `{thread.name}:`", ephemeral=True)
+            await interaction.response.send_message(f"No dates detected in `{thread.name}`", ephemeral=True)
 
     @tasks.loop(hours=3)
     async def parse_calendars(self, guild_id: None | int = None):
@@ -165,24 +170,30 @@ class CalendarParse(base_cog.Cog):
                     start_message = await thread.fetch_message(thread.id)
                     past_reference = start_message.created_at
                 try:
+                    # Get the dates
                     dates, time = _date_parser.parse_dates(
                         thread.name,
                         past_reference.date()
                     )
+                    # Get a description from the first pinned message (if any)
+                    description=thread.jump_url
+                    pins = [message async for message in thread.pins(limit=1)]
+                    if len(pins):
+                        description += "\n\n" + pins[0].content
                     for date in dates:
                         if time is None:
                             event: icalendar.Event = icalendar.Event.new(
                                 summary=name,
                                 start=date.date,
                                 end=date.date,
-                                description=thread.jump_url,
+                                description=description,
                             )
                         else:
                             event: icalendar.Event = icalendar.Event.new(
                                 summary=name,
                                 start=datetime.datetime.combine(date.date, time.start.time),
                                 end=datetime.datetime.combine(date.date, time.end.time),
-                                description=thread.jump_url,
+                                description=description,
                             )
                         calendar.add_component(event)
                 except Exception as e:
@@ -194,6 +205,7 @@ class CalendarParse(base_cog.Cog):
                     await admin.dm_channel.send(content=f"error while parsing `{thread.name}` for dates: {e}")
             with open(f"/var/www/hosting/hungrier/{row['hash']}.ics", "w") as f:
                 f.write(calendar.to_ical().decode("utf-8"))
+        self.bot.logger.info(f"Parsing calendar events done (for guild {guild_id})")
 
     @parse_calendars.before_loop
     async def before_printer(self):

@@ -68,6 +68,9 @@ def parse_month(string) -> Month | None:
         return Month(months.index(string) + 1)
     elif string in sub_months:
         return Month(sub_months.index(string) + 1)
+    elif string == "sept":
+        # the only month with a 4-letter short variant
+        return Month(9)
     return None
 
 def parse_day(string) -> Day | None:
