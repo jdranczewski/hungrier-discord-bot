@@ -1,8 +1,10 @@
+from xmlrpc.client import DateTime
 import dateutil
 import datetime
 import re
 from dataclasses import dataclass
 
+# Date dataclasses
 @dataclass
 class Day:
     day: int
@@ -29,6 +31,7 @@ class Date:
 
 _uk_tz = dateutil.tz.tzstr("Europe/London")
 
+# Time dataclasses
 @dataclass
 class Time:
     hour: int
@@ -43,6 +46,13 @@ class TimeRange:
     start: Time
     end: Time
 
+# Datetime dataclasses
+@dataclass
+class DateTimeRange:
+    date: Date
+    time_range: TimeRange
+
+# Helper for dashes in the string
 class Ranger:
     def __repr__(self):
         return "Ranger()"
@@ -105,7 +115,7 @@ def _regex_search(string) -> tuple[int | None, int, int, str] | None:
         day, month = (int(match.group(i)) for i in range(1, 3))
         return None, month, day, string.replace(match.group(0), "DATEFOUND")
 
-def _parse_part(part):
+def _parse_part(part: str):
     if "/" in part:
         match = _regex_search(part)
         if match is None:
@@ -177,7 +187,7 @@ def _handle_rangers(parsed_parts):
         # oops, something got messed up somewhere and a lot of days were added, abort
         raise Exception(f"Significantly too many days! ({N_days})")
 
-def parse_dates(string, past_reference) -> tuple[list[Date], None | TimeRange]:
+def parse_dates(string, past_reference) -> list[Date | DateTimeRange]:
     # Normalising to a standard format
     # Time should always use ":"
     string = re.sub(R"[0-9]\.[0-9][0-9]", lambda x: x.group(0).replace(".", ":"), string)
@@ -235,9 +245,33 @@ def parse_dates(string, past_reference) -> tuple[list[Date], None | TimeRange]:
     _set_years(parsed_parts, past_reference)
     _handle_rangers(parsed_parts)
     _set_dangling_times(parsed_parts)
+
+    # Collapse Dates and Times into DateTimes
+    time: None | TimeRange = None
+    dates_todo = []
+    for i, part in enumerate(parsed_parts):
+        if isinstance(part, TimeRange):
+            if len(dates_todo):
+                for date_i in dates_todo:
+                    date = parsed_parts[date_i]
+                    if isinstance(date, Date):
+                        parsed_parts[date_i] = DateTimeRange(date, part)
+                time = None
+            else:
+                time = part
+            dates_todo = []
+        elif isinstance(part, Date):
+            if time is not None:
+                parsed_parts[i] = DateTimeRange(part, time)
+            else:
+                dates_todo.append(i)
+        else:
+            time = None
+            dates_todo = []
+
     # for part in parsed_parts:
     #     if isinstance(part, Date):
     #         print("  ", part)
     time_list: list[TimeRange] = [x for x in parsed_parts if isinstance(x, TimeRange)]
     time = time_list[0] if len(time_list) == 1 else None
-    return [x for x in parsed_parts if isinstance(x, Date)], time
+    return [x for x in parsed_parts if isinstance(x, (Date, DateTimeRange))]

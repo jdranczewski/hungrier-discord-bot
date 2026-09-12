@@ -125,16 +125,16 @@ class CalendarParse(base_cog.Cog):
         if past_reference is None:
             start_message = await thread.fetch_message(thread.id)
             past_reference = start_message.created_at
-        dates, time = _date_parser.parse_dates(thread.name, past_reference.date())
+        dates = _date_parser.parse_dates(thread.name, past_reference.date())
         if len(dates):
             text = f"The following dates were detected in `{thread.name}:`"
             for date in dates:
-                text += f"\n* {date.year}/{date.month}/{date.day}"
-            if time is not None:
-                text += (
-                    f"\nA time was detected for the event: "
-                    f"{time.start.hour:02d}:{time.start.minute:02d} - {time.end.hour:02d}:{time.end.minute:02d}"
-                )
+                if isinstance(date, _date_parser.Date):
+                    text += f"\n* {date.year}/{date.month}/{date.day}"
+                else:
+                    text += f"\n* {date.date.year}/{date.date.month}/{date.date.day} "
+                    time = date.time_range
+                    text += f"({time.start.hour:02d}:{time.start.minute:02d} - {time.end.hour:02d}:{time.end.minute:02d})"
             await interaction.response.send_message(text, ephemeral=True)
         else:
             await interaction.response.send_message(f"No dates detected in `{thread.name}`", ephemeral=True)
@@ -171,7 +171,7 @@ class CalendarParse(base_cog.Cog):
                     past_reference = start_message.created_at
                 try:
                     # Get the dates
-                    dates, time = _date_parser.parse_dates(
+                    dates = _date_parser.parse_dates(
                         thread.name,
                         past_reference.date()
                     )
@@ -181,7 +181,7 @@ class CalendarParse(base_cog.Cog):
                     if len(pins):
                         description += "\n\n" + pins[0].content
                     for date in dates:
-                        if time is None:
+                        if isinstance(date, _date_parser.Date):
                             event: icalendar.Event = icalendar.Event.new(
                                 summary=name,
                                 start=date.date,
@@ -191,8 +191,8 @@ class CalendarParse(base_cog.Cog):
                         else:
                             event: icalendar.Event = icalendar.Event.new(
                                 summary=name,
-                                start=datetime.datetime.combine(date.date, time.start.time),
-                                end=datetime.datetime.combine(date.date, time.end.time),
+                                start=datetime.datetime.combine(date.date.date, date.time_range.start.time),
+                                end=datetime.datetime.combine(date.date.date, date.time_range.end.time),
                                 description=description,
                             )
                         calendar.add_component(event)
