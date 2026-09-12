@@ -53,15 +53,24 @@ separators = ".,()[]" # handling - and / separately
 number_ends = ["th", "st", "nd", "rd"]
 
 _time_regex = re.compile("((?:[0-9])?[0-9])[:.]([0-9]{2})([ap]m)?")
+_hour_regex = re.compile("((?:[0-9])?[0-9])([ap]m)")
+def _handle_time_components(hour:int, minute:int, ampm: str) -> Time:
+    if ampm == "pm" and hour != 12:
+        hour += 12
+    elif ampm == "am" and hour == 12:
+        hour -= 12
+    return Time(hour, minute)
+
 def parse_time(string) -> Time | None:
     if (match := _time_regex.match(string)):
         hour, minute = (int(match.group(i)) for i in range(1, 3))
         ampm = match.group(3)
-        if ampm == "pm" and hour != 12:
-            hour += 12
-        elif ampm == "am" and hour == 12:
-            hour -= 12
-        return Time(hour, minute)
+        return _handle_time_components(hour, minute, ampm)
+    elif (match := _hour_regex.match(string)):
+        hour = int(match.group(1))
+        ampm = match.group(2)
+        return _handle_time_components(hour, 0, ampm)
+
 
 def parse_month(string) -> Month | None:
     if string in months:
