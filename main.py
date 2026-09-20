@@ -17,6 +17,7 @@ class Hungrier(commands.Bot):
         await self.load_extension("extensions.polls")
         await self.load_extension("extensions.hearmeout")
         await self.load_extension("extensions.calendar")
+        await self.load_extension("extensions.emoji_roundup")
         self._reloader = autoreload.Reloader(ext_directory="extensions")
         self._reloader.start(self)
 
